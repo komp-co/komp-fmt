@@ -30,6 +30,7 @@ jobs:
         if: steps.toolchain.outputs.cache-hit != 'true'
         env:
           VERSION: ${{ steps.kflat.outputs.version }}
+        working-directory: ${{ runner.temp }}
         run: |
           base="https://github.com/komp-co/komp/releases/download/v$VERSION"
           curl -fsSLO "$base/kflat-$VERSION.tar.gz"
@@ -47,4 +48,4 @@ jobs:
       - name: The formatter's own sources are formatted
         run: |
           komp build .
-          target/kflat/komp_fmt --check .
+          target/kflat/komp_fmt --check src
