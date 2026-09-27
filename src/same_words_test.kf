@@ -1,0 +1,31 @@
+import core.assert.assert_eq
+
+@test
+fun indentation_is_not_a_word(): void {
+    assert_eq(same_words("fun f() {\nreturn 1\n}\n", "fun f() {\n    return 1\n}\n"), true, "only spaces moved")
+}
+
+@test
+fun blank_lines_count_as_one_break(): void {
+    assert_eq(same_words("a\n\n\nb\n", "a\n\nb\n"), true, "a run of breaks is one")
+}
+
+@test
+fun breaks_at_the_edges_do_not_count(): void {
+    assert_eq(same_words("\n\na = 1", "a = 1\n"), true, "none before the first word or after the last")
+}
+
+@test
+fun joining_two_lines_is_caught(): void {
+    assert_eq(same_words("a\nb\n", "a b\n"), false, "a break went")
+}
+
+@test
+fun gluing_two_words_is_caught(): void {
+    assert_eq(same_words("a + b\n", "a +b\n"), false, "a space between words went")
+}
+
+@test
+fun a_changed_word_is_caught(): void {
+    assert_eq(same_words("val a = 1\n", "val a = 2\n"), false, "different words")
+}

@@ -1,0 +1,27 @@
+// Which files a path names: itself, or every `.kf` file under a directory.
+
+import alloc.list.*
+import std.fs.is_directory
+import std.fs.read_dir
+
+/// `path` when it is not a directory; otherwise the `.kf` files under it,
+/// sorted, leaving out `target` build directories and hidden ones.
+pub fun source_files(path: str): List<String> {
+    var out = List.new<String>()
+    if is_directory(path) { walk(path, &var out) } else { out.push(String.from(path)) }
+    return out
+}
+
+fun walk(dir: str, out: &var List<String>): void {
+    val listed = read_dir(dir)
+    if listed.is_err() { return }
+    val names = listed.unwrap()
+    while name in &names {
+        val full = if dir.ends_with("/") { "${dir}${name}" } else { "${dir}/${name}" }
+        if is_directory(full.as_str()) {
+            if name.as_str() != "target" && !name.as_str().starts_with(".") { walk(full.as_str(), out) }
+        } else if name.as_str().ends_with(".kf") {
+            out.push(full)
+        }
+    }
+}

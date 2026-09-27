@@ -1,0 +1,86 @@
+// Where each line goes: its indentation from the brackets open around it,
+// and the blank lines kept between lines.
+
+import alloc.list.*
+
+/// A bracket still open, and the indentation the lines it holds are
+/// counted from.
+struct Opener {
+    val bracket: uint8
+    val indent: uint64
+}
+
+/// The lines laid out as text, ending in one newline. A line's indentation
+/// is four spaces past the line that opened the innermost bracket around
+/// it, and four more when it continues an expression. A line that starts by
+/// closing a bracket lines up with the line that opened it. At most one
+/// blank line is kept in a row, and none at the start or end of a block or
+/// of the text.
+pub fun lay_out(lines: &List<SourceLine>): String {
+    var out = String.from("")
+    var open = List.new<Opener>()
+    var statement_indent: uint64 = 0
+    var line_indent: uint64 = 0
+    var after_operator = false
+    var after_block_opener = true
+    var blank_waiting = false
+    while line in &lines {
+        if !line.verbatim && line.text.is_empty() {
+            blank_waiting = true
+            continue
+        }
+        val closes_first = !line.verbatim && line.leading_closers > 0
+        if blank_waiting && !after_block_opener && !closes_first { out.push_byte(10) }
+        blank_waiting = false
+        if line.verbatim {
+            out.append(line.text.as_str())
+        } else {
+            val continuing = !closes_first && (after_operator || line.continues)
+            line_indent = if closes_first && !open.is_empty() {
+                open[open.size() - 1].indent
+            } else if open.is_empty() {
+                0
+            } else {
+                open[open.size() - 1].indent + 4
+            }
+            if continuing { line_indent = line_indent + 4 } else { statement_indent = line_indent }
+            while _ in 0..line_indent { out.push_byte(32) }
+            out.append(line.text.as_str())
+            // A block opened by a continued line holds lines counted from the
+            // statement, as `if a &&` / `b {` does.
+            val block_indent = if continuing { statement_indent } else { line_indent }
+            open.apply(&line.brackets, line_indent, block_indent)
+        }
+        out.push_byte(10)
+        if line.verbatim { open.apply(&line.brackets, line_indent, line_indent) }
+        if line.has_code { after_operator = line.ends_with_operator }
+        after_block_opener = !line.brackets.is_empty() && line.brackets[line.brackets.size() - 1] == 123 &&
+            !open.is_empty()
+    }
+    return out
+}
+
+/// Opens and closes `brackets` in order. A `{` that ends the line opens a
+/// block counted from `block_indent`; anything else is counted from the
+/// line. Closing a bracket an earlier line opened counts what this line
+/// opens after it from that bracket, as a signature's `): T {` does.
+mutating fun List<Opener>.apply(brackets: &List<uint8>, line_indent: uint64, block_indent: uint64): void {
+    val before = self.size()
+    var line = line_indent
+    var block = block_indent
+    while i in 0..brackets.size() {
+        val bracket = brackets[i]
+        if bracket == 123 || bracket == 40 || bracket == 91 {
+            val ends_line = i + 1 == brackets.size() && bracket == 123
+            self.push(Opener { bracket: bracket, indent: if ends_line { block } else { line } })
+        } else if !self.is_empty() {
+            val closed_earlier = self.size() <= before
+            val indent = self[self.size() - 1].indent
+            val _closed = self.pop()
+            if closed_earlier {
+                line = indent
+                block = indent
+            }
+        }
+    }
+}

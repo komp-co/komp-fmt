@@ -1,0 +1,13 @@
+// Formatting a source file: one canonical layout, which never changes what
+// the file means.
+
+/// `text` formatted; `null` when it cannot be, because a literal is left
+/// open or the result would not hold the same words. Either way the
+/// file is left as it is.
+pub fun format_source(text: str): String? {
+    val lines = scan_lines(text) ?: return null
+    if lines.is_empty() { return Option.Some(String.from("")) }
+    val formatted = lay_out(&lines)
+    if !same_words(text, formatted.as_str()) { return null }
+    return Option.Some(formatted)
+}

@@ -1,0 +1,42 @@
+// The check that formatting changed only layout: the source and the result
+// must hold the same words, broken into the same lines.
+
+import alloc.list.*
+
+/// Whether `before` and `after` hold the same words in the same order, with
+/// a line break between the same two words. A word is a run of bytes other
+/// than space, tab, carriage return and line feed; a run of line breaks
+/// counts as one, and none before the first word or after the last.
+pub fun same_words(before: str, after: str): bool {
+    val left = words(before)
+    val right = words(after)
+    if left.size() != right.size() { return false }
+    while i in 0..left.size() {
+        if left[i].as_str() != right[i].as_str() { return false }
+    }
+    return true
+}
+
+/// The words of `text`, with "\n" standing for each run of line breaks
+/// between two of them.
+fun words(text: str): List<String> {
+    var out = List.new<String>()
+    var word = String.from("")
+    var broken = false
+    while at in 0..text.byte_len() {
+        val byte = text.byte(at)
+        if byte == 32 || byte == 9 || byte == 13 || byte == 10 {
+            if !word.is_empty() {
+                out.push(word)
+                word = String.from("")
+            }
+            if byte == 10 { broken = true }
+            continue
+        }
+        if word.is_empty() && broken && !out.is_empty() { out.push(String.from("\n")) }
+        broken = false
+        word.push_byte(byte)
+    }
+    if !word.is_empty() { out.push(word) }
+    return out
+}

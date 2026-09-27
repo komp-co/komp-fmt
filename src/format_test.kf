@@ -1,0 +1,108 @@
+import core.assert.assert_eq
+
+fun formatted(text: str): String {
+    return format_source(text) ?: String.from("<refused>")
+}
+
+@test
+fun a_block_is_indented_four_spaces(): void {
+    assert_eq(formatted("fun f(): int32 {\nreturn 1\n}\n").as_str(), "fun f(): int32 {\n    return 1\n}\n", "one level")
+}
+
+@test
+fun trailing_whitespace_goes(): void {
+    assert_eq(formatted("val a = 1   \n").as_str(), "val a = 1\n", "nothing after the code")
+}
+
+@test
+fun blank_lines_collapse_to_one(): void {
+    assert_eq(formatted("val a = 1\n\n\n\nval b = 2\n").as_str(), "val a = 1\n\nval b = 2\n", "one blank line")
+}
+
+@test
+fun a_block_has_no_blank_line_at_its_start_or_end(): void {
+    val text = "fun f(): void {\n\n    g()\n\n}\n"
+    assert_eq(formatted(text).as_str(), "fun f(): void {\n    g()\n}\n", "none inside the braces' edges")
+}
+
+@test
+fun the_text_has_no_blank_line_at_its_start_or_end(): void {
+    assert_eq(formatted("\n\nval a = 1\n\n\n").as_str(), "val a = 1\n", "one newline at the end")
+}
+
+@test
+fun spaces_between_tokens_become_one(): void {
+    assert_eq(formatted("val   a:   int32 =  1\n").as_str(), "val a: int32 = 1\n", "single spaces")
+}
+
+@test
+fun a_string_keeps_its_spaces(): void {
+    assert_eq(formatted("val s =   \"a    b\"\n").as_str(), "val s = \"a    b\"\n", "the literal as written")
+}
+
+@test
+fun a_comment_keeps_its_spaces(): void {
+    assert_eq(formatted("val a = 1    //  one   two\n").as_str(), "val a = 1 //  one   two\n", "one space before it")
+}
+
+@test
+fun an_operator_at_the_end_continues_the_line(): void {
+    val text = "fun f(): int32 {\n    return 1 +\n    2\n}\n"
+    assert_eq(formatted(text).as_str(), "fun f(): int32 {\n    return 1 +\n        2\n}\n", "four more")
+}
+
+@test
+fun a_block_opened_by_a_continued_line_counts_from_the_statement(): void {
+    val text = "fun f(): void {\n    if a &&\n    b {\n    g()\n    }\n}\n"
+    val expected = "fun f(): void {\n    if a &&\n        b {\n        g()\n    }\n}\n"
+    assert_eq(formatted(text).as_str(), expected, "the body one level in")
+}
+
+@test
+fun arguments_on_their_own_lines_are_one_level_in(): void {
+    val text = "fun f(): void {\n    g(\n1,\n            2\n    )\n}\n"
+    val expected = "fun f(): void {\n    g(\n        1,\n        2\n    )\n}\n"
+    assert_eq(formatted(text).as_str(), expected, "the closer lines up with the call")
+}
+
+@test
+fun a_leading_dot_continues_the_line(): void {
+    val text = "fun f(): void {\n    xs\n    .clear()\n}\n"
+    assert_eq(formatted(text).as_str(), "fun f(): void {\n    xs\n        .clear()\n}\n", "a chained call")
+}
+
+@test
+fun a_wildcard_import_does_not_continue(): void {
+    assert_eq(formatted("import a.*\n  import b.c\n").as_str(), "import a.*\nimport b.c\n", "two imports")
+}
+
+@test
+fun a_multi_line_string_is_kept_as_written(): void {
+    val text = "val s = \"\"\"\n  keep   this\n\n\n\"\"\"\n"
+    assert_eq(formatted(text).as_str(), text, "the literal's lines, blank ones too")
+}
+
+@test
+fun a_slot_in_a_string_is_kept_as_written(): void {
+    val text = "val s = \"a\${ f(  1 ) }b\"\n"
+    assert_eq(formatted(text).as_str(), text, "code inside a slot is the string's")
+}
+
+@test
+fun an_open_string_is_refused(): void {
+    assert_eq(format_source("val s = \"never closed\nval t = 1\n").is_none(), true, "left as it is")
+}
+
+@test
+fun formatting_twice_changes_nothing(): void {
+    val text = "fun f(): int32 {\nval a = 1 +\n2\n\n\n  if a > 1 {\nreturn a  // big\n}\nreturn 0\n}\n"
+    val once = formatted(text)
+    assert_eq(formatted(once.as_str()).as_str(), once.as_str(), "idempotent")
+}
+
+@test
+fun a_signature_over_several_lines_keeps_its_body_one_level_in(): void {
+    val text = "fun f(a: int32,\n      b: int32): int32 {\n    return a\n}\n"
+    val expected = "fun f(a: int32,\n    b: int32): int32 {\n    return a\n}\n"
+    assert_eq(formatted(text).as_str(), expected, "the body counts from the fun")
+}

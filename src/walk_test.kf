@@ -1,0 +1,41 @@
+import core.assert.assert_eq
+import alloc.path.Path
+import std.fs.create_dir_all
+import std.fs.remove_dir_all
+import std.fs.scratch_path
+import std.fs.write_text
+
+/// A fresh directory holding `a.kf`, `notes.txt`, `sub/b.kf`, `target/c.kf`
+/// and `.git/d.kf`.
+fun tree(name: str): str {
+    val root = scratch_path(name)
+    val _cleared = remove_dir_all(root)
+    val _made = create_dir_all(Path.new("${root}/sub".as_str()))
+    val _built = create_dir_all(Path.new("${root}/target".as_str()))
+    val _hidden = create_dir_all(Path.new("${root}/.git".as_str()))
+    val _a = write_text("${root}/a.kf".as_str(), "")
+    val _notes = write_text("${root}/notes.txt".as_str(), "")
+    val _b = write_text("${root}/sub/b.kf".as_str(), "")
+    val _c = write_text("${root}/target/c.kf".as_str(), "")
+    val _d = write_text("${root}/.git/d.kf".as_str(), "")
+    return root
+}
+
+@test
+fun a_directory_names_its_sources_below_it(): void {
+    val root = tree("walk_sources")
+    val files = source_files(root)
+    assert_eq(files.size(), 2, "a.kf and sub/b.kf only")
+}
+
+@test
+fun the_sources_come_sorted(): void {
+    val root = tree("walk_sorted")
+    val files = source_files(root)
+    assert_eq(files[1].as_str(), "${root}/sub/b.kf".as_str(), "a.kf before sub/")
+}
+
+@test
+fun a_file_names_itself(): void {
+    assert_eq(source_files("some/file.txt")[0].as_str(), "some/file.txt", "whatever it ends in")
+}

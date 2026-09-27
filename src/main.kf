@@ -1,0 +1,75 @@
+// `komp-fmt [--check] [PATH...]`, which `komp fmt` runs: formats each file,
+// or every `.kf` file under each directory, in place; with `--check` it
+// names each file formatting would change and writes nothing. Without a
+// path it formats the current directory. Exit 0 when every file is
+// formatted, 1 when `--check` found one that is not or a file could not be
+// formatted, 2 on a malformed command line.
+
+import alloc.list.*
+import core.args.arg_at
+import core.args.arg_count
+import std.fs.read_to_string
+import std.fs.write_text
+import std.io.eprintln
+
+fun main(): int32 {
+    var check = false
+    var paths = List.new<String>()
+    while i in 0..arg_count() {
+        val arg = arg_at(i)
+        if arg == "--check" {
+            check = true
+        } else if arg == "--help" || arg == "-h" {
+            println("usage: komp fmt [--check] [PATH...]")
+            return 0
+        } else if arg.starts_with("-") {
+            eprintln(&"komp-fmt: unknown option ${arg}; usage: komp fmt [--check] [PATH...]")
+            return 2
+        } else {
+            paths.push(String.from(arg))
+        }
+    }
+    if paths.is_empty() { paths.push(String.from(".")) }
+    var status: int32 = 0
+    while path in &paths {
+        val files = source_files(path.as_str())
+        while file in &files {
+            val result = format_file(file.as_str(), check)
+            if result > status { status = result }
+        }
+    }
+    return status
+}
+
+/// 0 when `path` is formatted, or has just been; 1 when it is not and
+/// `check` is set, or it cannot be read, formatted or written.
+fun format_file(path: str, check: bool): int32 {
+    val text = read_text(path) ?: {
+        eprintln(&"komp-fmt: cannot read ${path}")
+        return 1
+    }
+    val formatted = format_source(text.as_str()) ?: {
+        eprintln(&"komp-fmt: ${path}: left as it is: a literal is left open, or the layout would change its words")
+        return 1
+    }
+    if formatted.as_str() == text.as_str() { return 0 }
+    if check {
+        println(path)
+        return 1
+    }
+    when (write_text(path, formatted.as_str())) {
+        Ok(_) => {}
+        Err(_error) => {
+            eprintln(&"komp-fmt: cannot write ${path}")
+            return 1
+        }
+    }
+    return 0
+}
+
+fun read_text(path: str): String? {
+    when (read_to_string(path)) {
+        Ok(contents) => return Option.Some(contents.clone())
+        Err(_error) => return null
+    }
+}

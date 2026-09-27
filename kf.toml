@@ -1,0 +1,4 @@
+[project]
+name = "komp_fmt"
+version = "0.1.0"
+kind = "bin"

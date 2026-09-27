@@ -1,0 +1,50 @@
+name: Test
+
+# The formatter is built with the kflat release `kflat-version` names, installed
+# from its release archive and kept between runs.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the kflat version
+        id: kflat
+        run: echo "version=$(cat kflat-version)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        id: toolchain
+        with:
+          path: ~/.kflat
+          key: kflat-${{ steps.kflat.outputs.version }}
+
+      - name: Install kflat ${{ steps.kflat.outputs.version }}
+        if: steps.toolchain.outputs.cache-hit != 'true'
+        env:
+          VERSION: ${{ steps.kflat.outputs.version }}
+        run: |
+          base="https://github.com/komp-co/komp/releases/download/v$VERSION"
+          curl -fsSLO "$base/kflat-$VERSION.tar.gz"
+          curl -fsSLO "$base/kflat-$VERSION.tar.gz.sha256"
+          sha256sum -c "kflat-$VERSION.tar.gz.sha256"
+          tar -xzf "kflat-$VERSION.tar.gz"
+          sh "kflat-$VERSION/install.sh"
+
+      - name: Put komp on PATH
+        run: echo "$HOME/.kflat/bin" >> "$GITHUB_PATH"
+
+      - name: Unit tests
+        run: komp test .
+
+      - name: The formatter's own sources are formatted
+        run: |
+          komp build .
+          target/kflat/komp_fmt --check .

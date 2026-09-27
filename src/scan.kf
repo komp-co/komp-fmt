@@ -1,0 +1,272 @@
+// The source cut into lines, with what layout needs to know about each: the
+// brackets its code opens and closes, and whether it carries on the line
+// before or after it. String and char literals and comments are copied byte
+// for byte; only the whitespace between code tokens is normalized.
+
+import alloc.list.*
+
+/// One line of source. A line that starts inside a multi-line string is
+/// `verbatim`: its bytes are the string's, and are kept as they are.
+pub struct SourceLine {
+    pub val verbatim: bool
+    /// The line without its indentation or trailing whitespace, and with
+    /// runs of spaces between code tokens made one. A verbatim line's text
+    /// is the line as written.
+    pub val text: String
+    /// The brackets the line's code opens and closes, in order.
+    pub val brackets: List<uint8>
+    /// How many closing brackets the line starts with.
+    pub val leading_closers: uint64
+    /// Whether the line holds code, not only a comment or nothing.
+    pub val has_code: bool
+    /// Whether its code ends with an operator that needs a right operand.
+    pub val ends_with_operator: bool
+    /// Whether it starts with `.`, `?.` or an operator that continues the
+    /// expression on the line before.
+    pub val continues: bool
+}
+
+/// The lines of `text`; `null` when a literal is left open at the end of a
+/// line or of the text, which layout cannot place.
+pub fun scan_lines(text: str): List<SourceLine>? {
+    var lines = List.new<SourceLine>()
+    var scanner = Scanner.new()
+    var at: uint64 = 0
+    val end = text.byte_len()
+    while at < end {
+        if !scanner.scan_line(text, at, &var lines) { return null }
+        at = scanner.next_line
+    }
+    if !scanner.frames.is_empty() { return null }
+    return Option.Some(lines)
+}
+
+/// Where the scan is: inside which literals, and how deep in a `${ }` slot.
+struct Scanner {
+    /// Innermost last: `STRING`, `RAW_STRING` or `SLOT`.
+    var frames: List<uint8>
+    /// Each open slot's brace depth, innermost last.
+    var slot_depths: List<uint64>
+    /// Where the line after the last one scanned starts.
+    var next_line: uint64
+}
+
+fun STRING(): uint8 { return 1 }
+fun RAW_STRING(): uint8 { return 2 }
+fun SLOT(): uint8 { return 3 }
+
+impl Scanner {
+    static fun new(): Scanner {
+        return Scanner { frames: List.new<uint8>(), slot_depths: List.new<uint64>(), next_line: 0 }
+    }
+
+    fun in_code(): bool {
+        return self.frames.is_empty()
+    }
+
+    /// Adds the line starting at `from` to `into`; false when a one-line
+    /// string is left open at its end.
+    mutating fun scan_line(text: str, from: uint64, into: &var List<SourceLine>): bool {
+        val verbatim = !self.in_code()
+        var out = String.from("")
+        var brackets = List.new<uint8>()
+        var leading_closers: uint64 = 0
+        var before_code = !verbatim
+        var code_len: uint64 = 0
+        var pending_space = false
+        var at = from
+        val end = text.byte_len()
+        if !verbatim {
+            while at < end && is_blank_byte(text.byte(at)) { at = at + 1 }
+        }
+        while at < end && text.byte(at) != 10 {
+            val byte = text.byte(at)
+            if !self.in_code() {
+                at = self.literal_byte(text, at, &var out)
+                continue
+            }
+            if is_blank_byte(byte) {
+                pending_space = true
+                at = at + 1
+                continue
+            }
+            if pending_space && !out.is_empty() { out.push_byte(32) }
+            pending_space = false
+            if byte == 47 && at + 1 < end && text.byte(at + 1) == 47 {
+                at = append_comment(text, at, &var out)
+                continue
+            }
+            if is_closer(byte) && before_code {
+                leading_closers = leading_closers + 1
+            } else {
+                before_code = false
+            }
+            if is_opener(byte) || is_closer(byte) { brackets.push(byte) }
+            if byte == 34 {
+                at = self.open_string(text, at, &var out)
+            } else if byte == 39 {
+                at = append_char_literal(text, at, &var out)
+            } else {
+                out.push_byte(byte)
+                at = at + 1
+            }
+            code_len = out.byte_len()
+        }
+        if self.frames.size() > 0 && self.frames[self.frames.size() - 1] == STRING() { return false }
+        self.next_line = if at < end { at + 1 } else { end }
+        if verbatim || !self.in_code() {
+            into.push(SourceLine {
+                verbatim: verbatim, text: if verbatim { line_as_written(text, from, at) } else { out },
+                brackets: brackets, leading_closers: leading_closers, has_code: code_len > 0,
+                ends_with_operator: false, continues: false
+            })
+            return true
+        }
+        val code = out.as_str().substring(0, code_len)
+        into.push(SourceLine {
+            verbatim: false, text: out, brackets: brackets, leading_closers: leading_closers,
+            has_code: code_len > 0, ends_with_operator: ends_with_operator(code.as_str()),
+            continues: starts_continuation(code.as_str())
+        })
+        return true
+    }
+
+    /// Copies the string literal starting at `at`, as far as this line
+    /// holds it; where the scan goes on.
+    mutating fun open_string(text: str, at: uint64, out: &var String): uint64 {
+        if quote_run(text, at) >= 3 {
+            out.append("\"\"\"")
+            self.frames.push(RAW_STRING())
+            return at + 3
+        }
+        out.push_byte(34)
+        self.frames.push(STRING())
+        return at + 1
+    }
+
+    /// Copies one byte, or an escape or closing delimiter, of the literal
+    /// the scan is inside; where the scan goes on.
+    mutating fun literal_byte(text: str, at: uint64, out: &var String): uint64 {
+        val frame = self.frames[self.frames.size() - 1]
+        val byte = text.byte(at)
+        if frame == SLOT() { return self.slot_byte(text, at, out) }
+        if byte == 36 && at + 1 < text.byte_len() && text.byte(at + 1) == 123 {
+            out.append("\${")
+            self.frames.push(SLOT())
+            self.slot_depths.push(1)
+            return at + 2
+        }
+        if frame == STRING() {
+            if byte == 92 && at + 1 < text.byte_len() && text.byte(at + 1) != 10 {
+                out.push_byte(byte)
+                out.push_byte(text.byte(at + 1))
+                return at + 2
+            }
+            out.push_byte(byte)
+            if byte == 34 { self.pop() }
+            return at + 1
+        }
+        if byte == 34 {
+            val run = quote_run(text, at)
+            if run >= 3 {
+                while _ in 0..run { out.push_byte(34) }
+                self.pop()
+                return at + run
+            }
+        }
+        out.push_byte(byte)
+        return at + 1
+    }
+
+    /// A byte of the code inside `${ }`, kept as written.
+    mutating fun slot_byte(text: str, at: uint64, out: &var String): uint64 {
+        val byte = text.byte(at)
+        val last = self.slot_depths.size() - 1
+        if byte == 34 { return self.open_string(text, at, out) }
+        if byte == 39 { return append_char_literal(text, at, out) }
+        out.push_byte(byte)
+        if byte == 123 { self.slot_depths.set(last, self.slot_depths[last] + 1) }
+        if byte == 125 {
+            self.slot_depths.set(last, self.slot_depths[last] - 1)
+            if self.slot_depths[last] == 0 {
+                val _depth = self.slot_depths.pop()
+                self.pop()
+            }
+        }
+        return at + 1
+    }
+
+    mutating fun pop(): void {
+        val _frame = self.frames.pop()
+    }
+}
+
+fun is_blank_byte(byte: uint8): bool {
+    return byte == 32 || byte == 9 || byte == 13
+}
+
+fun is_opener(byte: uint8): bool {
+    return byte == 123 || byte == 40 || byte == 91
+}
+
+fun is_closer(byte: uint8): bool {
+    return byte == 125 || byte == 41 || byte == 93
+}
+
+/// How many `"` follow one another from `at`.
+fun quote_run(text: str, at: uint64): uint64 {
+    var run: uint64 = 0
+    while at + run < text.byte_len() && text.byte(at + run) == 34 { run = run + 1 }
+    return run
+}
+
+/// Appends the comment from `at` to the end of the line, without trailing
+/// whitespace; where the line ends.
+fun append_comment(text: str, at: uint64, out: &var String): uint64 {
+    var end = at
+    while end < text.byte_len() && text.byte(end) != 10 { end = end + 1 }
+    var last = end
+    while last > at && is_blank_byte(text.byte(last - 1)) { last = last - 1 }
+    out.append(text.substring(at, last).as_str())
+    return end
+}
+
+/// Appends the char literal starting at `at`; where it ends. One left open
+/// runs to the end of the line, for the lexer to report.
+fun append_char_literal(text: str, at: uint64, out: &var String): uint64 {
+    out.push_byte(39)
+    var i = at + 1
+    while i < text.byte_len() && text.byte(i) != 10 {
+        val byte = text.byte(i)
+        out.push_byte(byte)
+        i = i + 1
+        if byte == 92 && i < text.byte_len() && text.byte(i) != 10 {
+            out.push_byte(text.byte(i))
+            i = i + 1
+        } else if byte == 39 {
+            return i
+        }
+    }
+    return i
+}
+
+fun line_as_written(text: str, from: uint64, to: uint64): String {
+    return text.substring(from, to)
+}
+
+/// Whether `code` ends with an operator that needs its right operand on the
+/// next line. `<` and `>` are left out, since they also close a generic, and
+/// `.*` ends a wildcard import.
+fun ends_with_operator(code: str): bool {
+    if code.ends_with(".*") { return false }
+    return code.ends_with("=") || code.ends_with("+") || code.ends_with("-") || code.ends_with("*") ||
+        code.ends_with("/") || code.ends_with("%") || code.ends_with("&&") || code.ends_with("||") ||
+        code.ends_with("?:") || code.ends_with("=>") || code.ends_with("|>") || code.ends_with("..")
+}
+
+/// Whether `code` starts by continuing the expression on the line before.
+fun starts_continuation(code: str): bool {
+    if code.starts_with("..") { return false }
+    return code.starts_with(".") || code.starts_with("?.") || code.starts_with("?:") || code.starts_with("&&") ||
+        code.starts_with("||") || code.starts_with("|>")
+}
