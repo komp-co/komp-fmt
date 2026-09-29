@@ -3,7 +3,7 @@
 The KFlat formatter. Installed, it is `komp fmt`:
 
 ```console
-$ komp install komp_fmt
+$ komp tool install komp_fmt
 $ komp fmt                  # every .kf file under the current directory
 $ komp fmt src/main.kf lib/ # the files and directories named
 $ komp fmt --check          # name the files it would change; write nothing
@@ -36,7 +36,8 @@ is a file with a string left open.
 
 ## Building it
 
-With kflat installed, at the version `kflat-version` names or later:
+With kflat installed; the `kflat` pin in `kf.toml` names the releases it
+builds with:
 
 ```console
 $ komp test .
