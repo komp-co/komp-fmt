@@ -1,8 +1,6 @@
 // Where each line goes: its indentation from the brackets open around it,
 // and the blank lines kept between lines.
 
-import alloc.list.*
-
 /// A bracket still open, and the indentation the lines it holds are
 /// counted from.
 struct Opener {

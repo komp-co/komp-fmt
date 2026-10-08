@@ -1,8 +1,6 @@
 // The check that formatting changed only layout: the source and the result
 // must hold the same words, broken into the same lines.
 
-import alloc.list.*
-
 /// Whether `before` and `after` hold the same words in the same order, with
 /// a line break between the same two words. A word is a run of bytes other
 /// than space, tab, carriage return and line feed; a run of line breaks
