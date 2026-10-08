@@ -1,23 +1,18 @@
 import core.assert.assert_eq
-import alloc.path.Path
-import std.fs.create_dir_all
-import std.fs.remove_dir_all
-import std.fs.scratch_path
-import std.fs.write_text
 
 /// A fresh directory holding `a.kf`, `notes.txt`, `sub/b.kf`, `target/c.kf`
 /// and `.git/d.kf`.
 fun tree(name: str): str {
-    val root = scratch_path(name)
-    val _cleared = remove_dir_all(root)
-    val _made = create_dir_all(Path.new("${root}/sub".as_str()))
-    val _built = create_dir_all(Path.new("${root}/target".as_str()))
-    val _hidden = create_dir_all(Path.new("${root}/.git".as_str()))
-    val _a = write_text("${root}/a.kf".as_str(), "")
-    val _notes = write_text("${root}/notes.txt".as_str(), "")
-    val _b = write_text("${root}/sub/b.kf".as_str(), "")
-    val _c = write_text("${root}/target/c.kf".as_str(), "")
-    val _d = write_text("${root}/.git/d.kf".as_str(), "")
+    val root = Dir.scratch_path(name)
+    val _cleared = Dir.remove_all(root)
+    val _made = Dir.create_all("${root}/sub".as_str())
+    val _built = Dir.create_all("${root}/target".as_str())
+    val _hidden = Dir.create_all("${root}/.git".as_str())
+    val _a = File.write("${root}/a.kf".as_str(), "")
+    val _notes = File.write("${root}/notes.txt".as_str(), "")
+    val _b = File.write("${root}/sub/b.kf".as_str(), "")
+    val _c = File.write("${root}/target/c.kf".as_str(), "")
+    val _d = File.write("${root}/.git/d.kf".as_str(), "")
     return root
 }
 

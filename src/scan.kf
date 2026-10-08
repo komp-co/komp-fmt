@@ -3,8 +3,6 @@
 // before or after it. String and char literals and comments are copied byte
 // for byte; only the whitespace between code tokens is normalized.
 
-import alloc.list.*
-
 /// One line of source. A line that starts inside a multi-line string is
 /// `verbatim`: its bytes are the string's, and are kept as they are.
 pub struct SourceLine {

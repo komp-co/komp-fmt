@@ -5,18 +5,13 @@
 // formatted, 1 when `--check` found one that is not or a file could not be
 // formatted, 2 on a malformed command line.
 
-import alloc.list.*
-import core.args.arg_at
-import core.args.arg_count
-import std.fs.read_to_string
-import std.fs.write_text
 import std.io.eprintln
 
 fun main(): int32 {
     var check = false
     var paths = List.new<String>()
-    while i in 0..arg_count() {
-        val arg = arg_at(i)
+    while i in 0..Args.count() {
+        val arg = Args.at(i)
         if arg == "--check" {
             check = true
         } else if arg == "--help" || arg == "-h" {
@@ -57,7 +52,7 @@ fun format_file(path: str, check: bool): int32 {
         println(path)
         return 1
     }
-    when (write_text(path, formatted.as_str())) {
+    when (File.write(path, formatted.as_str())) {
         Ok(_) => {}
         Err(_error) => {
             eprintln(&"komp-fmt: cannot write ${path}")
@@ -68,7 +63,7 @@ fun format_file(path: str, check: bool): int32 {
 }
 
 fun read_text(path: str): String? {
-    when (read_to_string(path)) {
+    when (File.read(path)) {
         Ok(contents) => return Option.Some(contents.clone())
         Err(_error) => return null
     }

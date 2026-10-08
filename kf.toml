@@ -1,5 +1,5 @@
 [project]
 name = "komp_fmt"
-version = "0.1.0"
+version = "0.2.0"
 kind = "bin"
-kflat = "0.6"
+kflat = "0.29"
